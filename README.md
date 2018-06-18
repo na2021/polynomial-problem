@@ -9,7 +9,7 @@
      "list-routine-learning-rs"
 [1]: https://www.rust-lang.org
      "The Rust Programming Language"
-[3]: https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system
+[2]: https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system
      "Wikipedia - Hindley-Milner Type System"
 [3]: https://en.wikipedia.org/wiki/Rewriting#Term_rewriting_systems
      "Wikipedia - Term Rewriting Systems"
