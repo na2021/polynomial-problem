@@ -1,0 +1,13 @@
+[package]
+name = "list-routine-learning-rs"
+version = "0.1.0"
+authors = ["Josh Rule <joshua.s.rule@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/joshrule/list-routine-learning-rs"
+homepage = "https://github.com/joshrule/list-routine-learning-rs"
+description = "Rust simulations using input/output examples to learn typed first-order term rewriting systems that perform list routines."
+keywords = ["term-rewriting", "hindley-milner", "learning", "program-induction", "lists"]
+categories = ["science", "simulation"]
+
+[dependencies]
