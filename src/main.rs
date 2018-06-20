@@ -88,6 +88,10 @@ fn main() {
     }
 
     // report the results
+    for (i, (individual, score)) in pop.iter().enumerate() {
+        println!("{}: {}", i, score);
+        println!("    {}", individual);
+    }
 }
 
 mod utils {
