@@ -25,28 +25,34 @@ fn main() {
     // basic parameters;
     let n_data = 10;
     let exe_home = "/Users/rule/sync/josh/library/research/list-routines/list-routines-static";
-    let p_partial = 0.0;
+    let p_partial = 0.2;
     let prior_temperature = 1.0;
     let likelihood_temperature = 1.0;
-    let temperature = 1.0;
-    let generations = 10;
-    let n_crosses = 50;
-    let population_size = 10;
+    let temperature = 0.1;
+    let generations = 25;
+    let n_crosses = 5;
+    let p_add = 0.5;
+    let p_keep = 0.5;
+    let population_size = 20;
     let tournament_size = 5;
-    let mutation_prob = 0.6;
-    let n_delta = 1;
+    let mutation_prob = 0.75;
+    let n_delta = 15;
 
     // sample a routine and N data points
-    let output = Command::new(exe_home)
-        .arg("-u")
-        .arg("--routines")
-        .arg("1")
-        .arg("--examples")
-        .arg(&n_data.to_string())
-        .output().unwrap();
-    let routines_str = str::from_utf8(&output.stdout).unwrap();
-    let routines: Vec<Routine> = serde_json::from_str(routines_str).unwrap();
-    let routine = routines[0].clone();
+    let routine = loop {
+        let output = Command::new(exe_home)
+            .arg("-u")
+            .arg("--routines")
+            .arg("1")
+            .arg("--examples")
+            .arg(&n_data.to_string())
+            .output().unwrap();
+        let routines_str = str::from_utf8(&output.stdout).unwrap();
+        let routines: Vec<Routine> = serde_json::from_str(routines_str).unwrap();
+        if !routines.is_empty() {
+            break routines[0].clone();
+        }
+    };
 
     // initialize background knowledge
     let mut h0 = TRS::default();
@@ -54,12 +60,16 @@ fn main() {
     // construct the Type
     let otp = TypeSchema::from(routine.tp.o);
     let itp = TypeSchema::from(routine.tp.i);
-    let tp = ptp!(@arrow[otp.instantiate(&mut h0.ctx), itp.instantiate(&mut h0.ctx)]);
+    let tp = ptp!(@arrow[itp.instantiate(&mut h0.ctx), otp.instantiate(&mut h0.ctx)]);
     let concept = h0.signature.new_op(1, Some("C".to_string()));
-    h0.ops.push(tp);
+    h0.ops.push(tp.clone());
 
     // convert the data points to rules
     let data: Vec<Rule> = routine.examples.into_iter().map(|x| x.to_rule(&mut h0, concept)).collect();
+
+    println!("Concept: {}/{}", concept.display(&h0.signature), concept.arity(&h0.signature));
+    println!("Definition: {}", routine.name);
+    println!("Type: {}", tp);
 
     // construct the task
     let task = make_task_from_data(
@@ -78,16 +88,24 @@ fn main() {
         mutation_prob,
         n_delta,
     };
-    let params = TRSParams { h0, n_crosses };
+    let params = TRSParams { h0, n_crosses, p_add, p_keep };
     let s = TRSSpace;
 
     // run the algorithm
     let mut pop = s.init(&params, rng, &gpparams, &task);
-    for _ in 0..generations {
-        s.evolve(&params, rng, &gpparams, &task, &mut pop)
+    println!("Generations: ");
+    for i in 0..generations {
+        println!("{}...", i);
+        s.evolve(&params, rng, &gpparams, &task, &mut pop);
+        for (i, (individual, score)) in pop.iter().enumerate() {
+            println!("{}: {}", i, score);
+            println!("    {}", individual);
+        }
     }
+    println!{"Done!\n"};
 
     // report the results
+    println!("Results:");
     for (i, (individual, score)) in pop.iter().enumerate() {
         println!("{}: {}", i, score);
         println!("    {}", individual);
