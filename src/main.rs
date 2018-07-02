@@ -1,3 +1,11 @@
+//! [Rust][1] simulations using input/output examples to learn [typed][2] first-order [term rewriting systems][3] that perform list routines.
+//!
+//! [1]: https://www.rust-lang.org
+//! "The Rust Programming Language"
+//! [2]: https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system
+//! "Wikipedia - Hindley-Milner Type System"
+//! [3]: https://en.wikipedia.org/wiki/Rewriting#Term_rewriting_systems
+//! "Wikipedia - Term Rewriting Systems"
 #[macro_use]
 extern crate polytype;
 extern crate programinduction;
@@ -9,36 +17,44 @@ extern crate serde_json;
 extern crate term_rewriting;
 
 use std::process::Command;
-use term_rewriting::Rule;
+use term_rewriting::{Rule, Signature};
 use std::str;
-use polytype::TypeSchema;
+use polytype::{Context as TypeContext, TypeSchema};
 use programinduction::{GP, GPParams};
-use programinduction::trs::{make_task_from_data, TRS, TRSParams, TRSSpace};
+use programinduction::trs::{make_task_from_data, Lexicon,  GeneticParams, ModelParams};
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
 use utils::*;
 
 fn main() {
-    // seed the prng
+    // initialize prng
     let rng = &mut SmallRng::from_seed([1u8; 16]);
 
-    // basic parameters;
+    // initialize parameters
     let n_data = 10;
     let exe_home = "/Users/rule/sync/josh/library/research/list-routines/list-routines-static";
     let p_partial = 0.2;
-    let prior_temperature = 1.0;
-    let likelihood_temperature = 1.0;
-    let temperature = 0.1;
-    let generations = 25;
+    let p_observe = 0.0;
+    let max_steps = 50;
+    let max_size = Some(500);
     let n_crosses = 5;
     let p_add = 0.5;
     let p_keep = 0.5;
+    let max_sample_depth = 4;
+    let generations = 25;
     let population_size = 20;
     let tournament_size = 5;
     let mutation_prob = 0.75;
     let n_delta = 15;
 
-    // sample a routine and N data points
+    // initialize structs
+    let knowledge: Vec<Rule> = vec![];
+    let mut ctx = TypeContext::default();
+    let mut sig = Signature::default();
+    let mut ops: Vec<TypeSchema> = vec![];
+    let vars: Vec<TypeSchema> = vec![];
+
+    start_section("Choosing Routine");
     let routine = loop {
         let output = Command::new(exe_home)
             .arg("-u")
@@ -49,73 +65,71 @@ fn main() {
             .output().unwrap();
         let routines_str = str::from_utf8(&output.stdout).unwrap();
         let routines: Vec<Routine> = serde_json::from_str(routines_str).unwrap();
-        if !routines.is_empty() {
-            break routines[0].clone();
+        match routines.len() {
+            0 => (),
+            1 => break routines[0].clone(),
+            _ => panic!("static exporter returned more than one routine.")
         }
     };
 
-    // initialize background knowledge
-    let mut h0 = TRS::default();
-
-    // construct the Type
+    start_section("Concept");
     let otp = TypeSchema::from(routine.tp.o);
     let itp = TypeSchema::from(routine.tp.i);
-    let tp = ptp!(@arrow[itp.instantiate(&mut h0.ctx), otp.instantiate(&mut h0.ctx)]);
-    let concept = h0.signature.new_op(1, Some("C".to_string()));
-    h0.ops.push(tp.clone());
-
-    // convert the data points to rules
-    let data: Vec<Rule> = routine.examples.into_iter().map(|x| x.to_rule(&mut h0, concept)).collect();
-
-    println!("Concept: {}/{}", concept.display(&h0.signature), concept.arity(&h0.signature));
+    let tp = ptp!(@arrow[itp.instantiate(&mut ctx), otp.instantiate(&mut ctx)]);
+    let concept = sig.new_op(1, Some("C".to_string()));
+    ops.push(tp.clone());
+    println!("Name/Arity: {}/{}", concept.display(&sig), concept.arity(&sig));
     println!("Definition: {}", routine.name);
     println!("Type: {}", tp);
 
-    // construct the task
-    let task = make_task_from_data(
-        &data,
-        otp,
-        p_partial,
-        temperature,
-        prior_temperature,
-        likelihood_temperature,
-    );
+    start_section("Data");
+    let data: Vec<Rule> = routine.examples.into_iter().map(|x| x.to_rule(&mut sig, &mut ops, concept)).collect();
+    for datum in &data {
+        println!("{}", datum.pretty(&sig));
+    }
 
-    // construct the params
-    let gpparams = GPParams {
+    start_section("Initializing Population");
+    let model_params = ModelParams {
+        p_partial,
+        p_observe,
+        max_steps,
+        max_size,
+    };
+    let gp_params = GPParams {
         population_size,
         tournament_size,
         mutation_prob,
         n_delta,
     };
-    let params = TRSParams { h0, n_crosses, p_add, p_keep };
-    let s = TRSSpace;
+    let params = GeneticParams { max_sample_depth, n_crosses, p_add, p_keep };
+    let task = make_task_from_data(&data, otp, model_params);
+    let s = Lexicon::from_signature(sig, ops, vars, knowledge);
+    let mut pop = s.init(&params, rng, &gp_params, &task);
 
-    // run the algorithm
-    let mut pop = s.init(&params, rng, &gpparams, &task);
-    println!("Generations: ");
+    start_section("Evolving");
     for i in 0..generations {
         println!("{}...", i);
-        s.evolve(&params, rng, &gpparams, &task, &mut pop);
+        s.evolve(&params, rng, &gp_params, &task, &mut pop);
         for (i, (individual, score)) in pop.iter().enumerate() {
             println!("{}: {}", i, score);
             println!("    {}", individual);
         }
     }
-    println!{"Done!\n"};
 
-    // report the results
-    println!("Results:");
+    start_section("Results");
     for (i, (individual, score)) in pop.iter().enumerate() {
         println!("{}: {}", i, score);
         println!("    {}", individual);
     }
 }
 
+fn start_section(s: &str) {
+    println!("\n{}\n{}", s, "-".repeat(s.len()));
+}
+
 mod utils {
-    use term_rewriting::{Operator, Rule, Term};
+    use term_rewriting::{Operator, Rule, Signature, Term};
     use polytype::TypeSchema;
-    use programinduction::trs::TRS;
 
     #[derive(Clone, Debug, Serialize, Deserialize)]
     pub struct Routine {
@@ -131,12 +145,17 @@ mod utils {
         o: Value
     }
     impl Datum {
-        /// Convert a `self` to a term rewriting [`Rule`].
+        /// Convert a `Datum` to a term rewriting [`Rule`].
         ///
         /// [`Rule`]: ../term_rewriting/struct.Rule.html
-        pub fn to_rule(&self, trs: &mut TRS, concept: Operator) -> Rule {
-            let lhs = self.i.to_term(trs, Some(concept));
-            let rhs = self.o.to_term(trs, None);
+        pub fn to_rule(
+            &self,
+            sig: &mut Signature,
+            ops: &mut Vec<TypeSchema>,
+            concept: Operator
+        ) -> Rule {
+            let lhs = self.i.to_term(sig, ops, Some(concept));
+            let rhs = self.o.to_term(sig, ops, None);
             Rule::new(lhs, vec![rhs]).unwrap()
         }
     }
@@ -176,16 +195,21 @@ mod utils {
         Bool(bool),
     }
     impl Value {
-        fn to_term(&self, trs: &mut TRS, lhs: Option<Operator>) -> Term {
+        fn to_term(
+            &self,
+            sig: &mut Signature,
+            ops: &mut Vec<TypeSchema>,
+            lhs: Option<Operator>,
+        ) -> Term {
             let base_term = match self {
-                Value::Int(x) => Value::num_to_term(trs, *x),
-                Value::IntList(xs) => Value::list_to_term(trs, xs),
+                Value::Int(x) => Value::num_to_term(sig, ops, *x),
+                Value::IntList(xs) => Value::list_to_term(sig, ops, xs),
                 Value::Bool(true) => Term::Application{
-                    op: Value::get_op(trs, 0, Some("true"), &ptp!(bool)),
+                    op: Value::get_op(sig, ops, 0, Some("true"), &ptp!(bool)),
                     args: vec![]
                 },
                 Value::Bool(false) => Term::Application{
-                    op: Value::get_op(trs, 0, Some("false"), &ptp!(bool)),
+                    op: Value::get_op(sig, ops, 0, Some("false"), &ptp!(bool)),
                     args: vec![]
                 },
             };
@@ -198,10 +222,14 @@ mod utils {
                 base_term
             }
         }
-        fn list_to_term(trs: &mut TRS, xs: &[isize]) -> Term {
-            let ts: Vec<Term> = xs.iter().map(|&x| Value::num_to_term(trs, x)).rev().collect();
-            let nil = Value::get_op(trs, 0, Some("nil"), &ptp!(0; list(tp!(0))));
-            let cons = Value::get_op(trs, 2, Some("cons"), &ptp!(0; @arrow[tp!(0), tp!(list(tp!(0)))]));
+        fn list_to_term(
+            sig: &mut Signature,
+            ops: &mut Vec<TypeSchema>,
+            xs: &[isize],
+        ) -> Term {
+            let ts: Vec<Term> = xs.iter().map(|&x| Value::num_to_term(sig, ops, x)).rev().collect();
+            let nil = Value::get_op(sig, ops, 0, Some("nil"), &ptp!(0; list(tp!(0))));
+            let cons = Value::get_op(sig, ops, 2, Some("cons"), &ptp!(0; @arrow[tp!(0), tp!(list(tp!(0)))]));
             let mut term = Term::Application{ op: nil, args: vec![] };
             for t in ts {
                 term = Term::Application {
@@ -211,10 +239,14 @@ mod utils {
             }
             term
         }
-        fn num_to_term(trs: &mut TRS, n: isize) -> Term {
+        fn num_to_term(
+            sig: &mut Signature,
+            ops: &mut Vec<TypeSchema>,
+            n: isize,
+        ) -> Term {
             if n < 0 {
-                let neg = Value::get_op(trs, 1, Some("neg"), &ptp!(@arrow[tp!(int), tp!(int)]));
-                let num = Value::get_op(trs, 0, Some(&(-n).to_string()), &ptp!(int));
+                let neg = Value::get_op(sig, ops, 1, Some("neg"), &ptp!(@arrow[tp!(int), tp!(int)]));
+                let num = Value::get_op(sig, ops, 0, Some(&(-n).to_string()), &ptp!(int));
                 Term::Application {
                     op: neg,
                     args: vec![Term::Application {
@@ -223,24 +255,24 @@ mod utils {
                     }],
                 }
             } else {
-                let num = Value::get_op(trs, 0, Some(&n.to_string()), &ptp!(int));
+                let num = Value::get_op(sig, ops, 0, Some(&n.to_string()), &ptp!(int));
                 Term::Application {
                     op: num,
                     args: vec![],
                 }
             }
         }
-        fn get_op(trs: &mut TRS, arity: u32, name: Option<&str>, schema: &TypeSchema) -> Operator {
-            if let Some(op) = Value::find_op(trs, arity, name, schema) {
+        fn get_op(sig: &mut Signature, ops: &mut Vec<TypeSchema>, arity: u32, name: Option<&str>, schema: &TypeSchema) -> Operator {
+            if let Some(op) = Value::find_op(sig, ops, arity, name, schema) {
                 op
             } else {
-                trs.ops.push(schema.clone());
-                trs.signature.new_op(arity, name.map(|x| x.to_string()))
+                ops.push(schema.clone());
+                sig.new_op(arity, name.map(|x| x.to_string()))
             }
         }
-        fn find_op(trs: &TRS, arity: u32, name: Option<&str>, schema: &TypeSchema) -> Option<Operator> {
-            for (i, o) in trs.signature.operators().into_iter().enumerate() {
-                if o.arity(&trs.signature) == arity && o.name(&trs.signature) == name && trs.ops[i] == *schema {
+        fn find_op(sig: &Signature, ops: &mut Vec<TypeSchema>, arity: u32, name: Option<&str>, schema: &TypeSchema) -> Option<Operator> {
+            for (i, o) in sig.operators().into_iter().enumerate() {
+                if o.arity(&sig) == arity && o.name(&sig) == name && ops[i] == *schema {
                     return Some(o);
                 }
             }

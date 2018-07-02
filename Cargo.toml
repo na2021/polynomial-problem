@@ -11,7 +11,7 @@ keywords = ["term-rewriting", "hindley-milner", "learning", "program-induction",
 categories = ["science", "simulation"]
 
 [dependencies]
-polytype = "5.0"
+polytype = "6.0"
 programinduction = "=0.6.11"
 rand = "0.5"
 serde = "1.0"
