@@ -70,6 +70,12 @@ fn main() {
     let tp = ptp!(@arrow[itp.instantiate(&mut ctx), otp.instantiate(&mut ctx)]);
     let concept = sig.new_op(1, Some("C".to_string()));
     ops.push(tp.clone());
+    let cons = sig.new_op(2, Some("CONS".to_string()));
+    ops.push(ptp!(@arrow[tp!(int),
+                         tp!(list(tp!(int))),
+                         tp!(list(tp!(int)))]));
+    let nil = sig.new_op(0, Some("NIL".to_string()));
+    ops.push(ptp!(list(tp!(int))));
     println!("Name/Arity: {}/{}", concept.display(&sig), concept.arity(&sig));
     println!("Definition: {}", routine.name);
     println!("Type: {}", tp);
@@ -93,8 +99,48 @@ fn main() {
         mutation_prob,
         n_delta,
     };
-    let params = GeneticParams { max_sample_depth, n_crosses, p_add, p_keep };
     let task = make_task_from_data(&data, otp, model_params);
+    let templates = vec![
+        // [!] = [!]
+        RuleContext {
+            lhs: Context::Hole,
+            rhs: vec![Context::Hole],
+        },
+        // C nil = [!]
+        RuleContext {
+            lhs: Context::Application {
+                op: concept,
+                args: vec![Context::Application {
+                    op: nil,
+                    args: vec![]
+                }]
+            },
+            rhs: vec![Context::Hole],
+        },
+        // C cons([!], [!]) = [!]
+        RuleContext {
+            lhs: Context::Application {
+                op: concept,
+                args: vec![Context::Application {
+                    op: cons,
+                    args: vec![
+                        Context::Hole,
+                        Context::Hole,
+                    ]
+                }]
+            },
+            rhs: vec![Context::Hole],
+        },
+    ];
+    let params = GeneticParams {
+        max_sample_depth,
+        n_crosses,
+        p_add,
+        p_keep,
+        deterministic,
+        templates,
+        atom_weights
+    };
     let s = Lexicon::from_signature(sig, ops, vars, knowledge);
     let mut pop = s.init(&params, rng, &gp_params, &task);
 
