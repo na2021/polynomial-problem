@@ -16,14 +16,13 @@ extern crate serde_derive;
 extern crate serde_json;
 extern crate term_rewriting;
 
-use std::process::Command;
-use term_rewriting::{Rule, Signature};
-use std::str;
 use polytype::{Context as TypeContext, TypeSchema};
 use programinduction::{GP, GPParams};
 use programinduction::trs::{make_task_from_data, Lexicon,  GeneticParams, ModelParams};
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
+use std::str;
+use term_rewriting::{Context, parse_trs, Rule, RuleContext, Signature};
 use utils::*;
 
 fn main() {
@@ -31,8 +30,6 @@ fn main() {
     let rng = &mut SmallRng::from_seed([1u8; 16]);
 
     // initialize parameters
-    let n_data = 10;
-    let exe_home = "/Users/rule/sync/josh/library/research/list-routines/list-routines-static";
     let p_partial = 0.2;
     let p_observe = 0.0;
     let max_steps = 50;
@@ -42,10 +39,12 @@ fn main() {
     let p_keep = 0.5;
     let max_sample_depth = 4;
     let generations = 25;
-    let population_size = 20;
+    let deterministic = true;
+    let atom_weights = (0.5, 0.25, 0.25);
+    let population_size = 5;
     let tournament_size = 5;
-    let mutation_prob = 0.75;
-    let n_delta = 15;
+    let mutation_prob = 0.95;
+    let n_delta = 10;
 
     // initialize structs
     let knowledge: Vec<Rule> = vec![];
@@ -56,14 +55,7 @@ fn main() {
 
     start_section("Choosing Routine");
     let routine = loop {
-        let output = Command::new(exe_home)
-            .arg("-u")
-            .arg("--routines")
-            .arg("1")
-            .arg("--examples")
-            .arg(&n_data.to_string())
-            .output().unwrap();
-        let routines_str = str::from_utf8(&output.stdout).unwrap();
+        let routines_str = "[{\"type\":{\"input\":\"list-of-int\",\"output\":\"int\"},\"examples\":[{\"i\":[5,10],\"o\":5},{\"i\":[9,13,12],\"o\":9},{\"i\":[7,15],\"o\":7},{\"i\":[15,0,14,8,8,12],\"o\":15},{\"i\":[10,6,10,0],\"o\":10},{\"i\":[3,7,3,0],\"o\":3},{\"i\":[8,2,9],\"o\":8},{\"i\":[8,16,3,8],\"o\":8},{\"i\":[12,0,12,12,12],\"o\":12},{\"i\":[11,11,10,7,9],\"o\":11}],\"name\":\"((head (dyn . 0)))\"}]";
         let routines: Vec<Routine> = serde_json::from_str(routines_str).unwrap();
         match routines.len() {
             0 => (),
@@ -228,8 +220,8 @@ mod utils {
             xs: &[isize],
         ) -> Term {
             let ts: Vec<Term> = xs.iter().map(|&x| Value::num_to_term(sig, ops, x)).rev().collect();
-            let nil = Value::get_op(sig, ops, 0, Some("nil"), &ptp!(0; list(tp!(0))));
-            let cons = Value::get_op(sig, ops, 2, Some("cons"), &ptp!(0; @arrow[tp!(0), tp!(list(tp!(0)))]));
+            let nil = Value::get_op(sig, ops, 0, Some("NIL"), &ptp!(list(tp!(int))));
+            let cons = Value::get_op(sig, ops, 2, Some("CONS"), &ptp!(@arrow[tp!(int), tp!(list(tp!(int))), tp!(list(tp!(int)))]));
             let mut term = Term::Application{ op: nil, args: vec![] };
             for t in ts {
                 term = Term::Application {
