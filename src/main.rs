@@ -25,7 +25,8 @@ use std::str;
 use term_rewriting::{Context, parse_trs, Rule, RuleContext, Signature};
 use utils::*;
 
-fn main() {
+fn main() -> io::Result<()> {
+    start_section("So it begins!");
     // initialize prng
     let rng = &mut SmallRng::from_seed([1u8; 16]);
 
@@ -38,9 +39,9 @@ fn main() {
     let p_add = 0.5;
     let p_keep = 0.5;
     let max_sample_depth = 4;
-    let generations = 25;
     let deterministic = true;
     let atom_weights = (0.5, 0.25, 0.25);
+    let generations_per_datum = 10;
     let population_size = 5;
     let tournament_size = 5;
     let mutation_prob = 0.95;
@@ -99,7 +100,6 @@ fn main() {
         mutation_prob,
         n_delta,
     };
-    let task = make_task_from_data(&data, otp, model_params);
     let templates = vec![
         // [!] = [!]
         RuleContext {
@@ -141,24 +141,69 @@ fn main() {
         templates,
         atom_weights
     };
+    let mut task = make_task_from_data(&data[..0], otp.clone(), model_params);
     let s = Lexicon::from_signature(sig, ops, vars, knowledge);
+    // FIXME: These shouldn't be constants.
+    let h_star_lprior = 0.0;
+    let h_star_llike = 0.0;
+    let h_star_lpost = h_star_lprior + h_star_llike;
+
     let mut pop = s.init(&params, rng, &gp_params, &task);
 
     start_section("Evolving");
-    for i in 0..generations {
-        println!("{}...", i);
-        s.evolve(&params, rng, &gp_params, &task, &mut pop);
-        for (i, (individual, score)) in pop.iter().enumerate() {
-            println!("{}: {}", i, score);
-            println!("    {}", individual);
+    for n_data in 0..=(data.len()) {
+        if n_data > 0 {
+            task = make_task_from_data(&data[0..n_data], otp.clone(), model_params);
+            for i in pop.iter_mut() {
+                i.1 = (task.oracle)(&s, &i.0);
+            }
+        }
+        for gen in 0..generations_per_datum {
+            s.evolve(&params, rng, &gp_params, &task, &mut pop);
+            for (i, (individual, score)) in pop.iter().enumerate() {
+                println!("{},{},{},{:.4},{:.4},{:?}",
+                         n_data,
+                         gen,
+                         i,
+                         score,
+                         h_star_lpost - score,
+                         individual.to_string(),
+                );
+            }
         }
     }
 
     start_section("Results");
-    for (i, (individual, score)) in pop.iter().enumerate() {
-        println!("{}: {}", i, score);
-        println!("    {}", individual);
+    println!("rank,nlprior,nllike,nlpost,correct,better,difference");
+    for (i, (individual, _)) in pop.iter().enumerate() {
+        let nlprior = -individual.pseudo_log_prior();
+        let nllike = -individual.log_likelihood(&data, model_params);
+        let nlpost = nlprior + nllike;
+        println!(
+            "{},{:.4},{:.4},{:.4},{},{},{:.4},{:?}",
+            i,
+            nlprior,
+            nllike,
+            nlpost,
+            (nllike <= h_star_llike) as usize,
+            (nlpost <= h_star_lpost) as usize,
+            h_star_lpost - nlpost,
+            individual.to_string(),
+        );
     }
+
+    start_section("Summary");
+    println!("best_score,best_difference,mean_score,mean_difference");
+    let mean_score = pop.iter().map(|x| x.1).sum::<f64>()/(pop.len() as f64);
+    println!("{:.4},{:.4},{:.4},{:.4}",
+             pop[0].1,
+             h_star_lpost - pop[0].1,
+             mean_score,
+             h_star_lpost - mean_score,
+    );
+
+    start_section("Done!");
+    Ok(())
 }
 
 fn start_section(s: &str) {
