@@ -1,0 +1,3 @@
+INCREMENT1(CONS([!] [!])) = [!];
+INCREMENT1(NIL) = [!];
+[!] = [!];

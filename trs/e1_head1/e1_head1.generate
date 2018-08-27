@@ -1,0 +1,24 @@
+START = HEAD1(list);
+
+list = list_1 | list_2 | list_3 | list_4 | list_5;
+
+list_0 = NIL;
+list_1 = CONS(number list_0);
+list_2 = CONS(number list_1);
+list_3 = CONS(number list_2);
+list_4 = CONS(number list_3);
+list_5 = CONS(number list_4);
+
+number = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
+
+1 = SUCC(0);
+2 = SUCC(SUCC(0));
+3 = SUCC(SUCC(SUCC(0)));
+4 = SUCC(SUCC(SUCC(SUCC(0))));
+5 = SUCC(SUCC(SUCC(SUCC(SUCC(0)))));
+6 = SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(0))))));
+7 = SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(0)))))));
+8 = SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(0))))))));
+9 = SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(0)))))))));
+
+START;

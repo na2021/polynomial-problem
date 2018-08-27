@@ -1,0 +1,3 @@
+FILTER_EVEN1(CONS([!] [!])) = [!];
+FILTER_EVEN1(NIL) = [!];
+[!] = [!];

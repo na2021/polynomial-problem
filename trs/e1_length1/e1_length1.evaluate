@@ -1,0 +1,2 @@
+LENGTH1(NIL) = 0;
+LENGTH1(CONS(x_ y_)) = SUCC(LENGTH1(y_));

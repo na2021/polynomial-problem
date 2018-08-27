@@ -1,0 +1,79 @@
+# numbers
+1 = SUCC(0);
+2 = SUCC(SUCC(0));
+# 3 = SUCC(SUCC(SUCC(0)));
+# 4 = SUCC(SUCC(SUCC(SUCC(0))));
+# 5 = SUCC(SUCC(SUCC(SUCC(SUCC(0)))));
+# 6 = SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(0))))));
+# 7 = SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(0)))))));
+# 8 = SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(0))))))));
+# 9 = SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(0)))))))));
+
+# sum xs: sum the elements of xs
+SUM_PRIM(NIL) = 0;
+SUM_PRIM(CONS(x_ y_)) = ADD_NUM(x_ SUM_PRIM(y_));
+
+ADD_NUM(0 y_) = y_;
+ADD_NUM(x_ 0) = x_;
+ADD_NUM(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(x_))))))))) y_) = SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(ADD_NUM(x_ y_))))))))));
+ADD_NUM(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(x_)))))))) y_) = SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(ADD_NUM(x_ y_)))))))));
+ADD_NUM(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(x_))))))) y_) = SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(ADD_NUM(x_ y_))))))));
+ADD_NUM(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(x_)))))) y_) = SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(ADD_NUM(x_ y_)))))));
+ADD_NUM(SUCC(SUCC(SUCC(SUCC(SUCC(x_))))) y_) = SUCC(SUCC(SUCC(SUCC(SUCC(ADD_NUM(x_ y_))))));
+ADD_NUM(SUCC(SUCC(SUCC(SUCC(x_)))) y_) = SUCC(SUCC(SUCC(SUCC(ADD_NUM(x_ y_)))));
+ADD_NUM(SUCC(SUCC(SUCC(x_))) y_) = SUCC(SUCC(SUCC(ADD_NUM(x_ y_))));
+ADD_NUM(SUCC(SUCC(x_)) y_) = SUCC(SUCC(ADD_NUM(x_ y_)));
+ADD_NUM(SUCC(x_) y_) = SUCC(ADD_NUM(x_ y_));
+
+# add x xs: add x to each element in xs
+ADD(0 xs_) = xs_;
+ADD(x_ NIL) = NIL;
+ADD(x_ CONS(y_ z_)) = CONS(ADD_NUM(x_ y_) ADD(x_ z_));
+
+# insert x xs: put x in xs, so it is larger than preceding elements
+INSERT(x_ NIL) = CONS(x_ NIL);
+INSERT(x_ CONS(y_ z_)) = IF(GREATTER(x_ y_) CONS(y_ INSERT(x_ z_)) CONS(x_ CONS(y_ z_)));
+
+# remove x xs: remove x from xs (filter a specIFic element)
+REMOVE(x_ NIL) = NIL;
+REMOVE(x_ CONS(x_ z_)) = REMOVE(x_ z_);
+REMOVE(x_ CONS(y_ z_)) = CONS(y_ REMOVE(x_ z_));
+
+# even? x: true if x is even else false
+EVEN(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(0)))))))))) = FALSE;
+EVEN(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(0))))))))) = TRUE;
+EVEN(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(0)))))))) = FALSE;
+EVEN(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(0))))))) = TRUE;
+EVEN(SUCC(SUCC(SUCC(SUCC(SUCC(0)))))) = FALSE;
+EVEN(SUCC(SUCC(SUCC(SUCC(0))))) = TRUE;
+EVEN(SUCC(SUCC(SUCC(0)))) = FALSE;
+EVEN(SUCC(SUCC(0))) = TRUE;
+EVEN(SUCC(0)) = FALSE;
+EVEN(0) = TRUE;
+EVEN(SUCC(SUCC(x_))) = EVEN(x_);
+
+# greater? x y: true if x > y else false
+GREATTER(0 y_) = FALSE;
+GREATTER(x_ 0) = TRUE;
+GREATTER(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(x_))))))))) SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(y_)))))))))) = GREATTER(x_ y_);
+GREATTER(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(x_)))))))) SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(y_))))))))) = GREATTER(x_ y_);
+GREATTER(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(x_))))))) SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(y_)))))))) = GREATTER(x_ y_);
+GREATTER(SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(x_)))))) SUCC(SUCC(SUCC(SUCC(SUCC(SUCC(y_))))))) = GREATTER(x_ y_);
+GREATTER(SUCC(SUCC(SUCC(SUCC(SUCC(x_))))) SUCC(SUCC(SUCC(SUCC(SUCC(y_)))))) = GREATTER(x_ y_);
+GREATTER(SUCC(SUCC(SUCC(SUCC(x_)))) SUCC(SUCC(SUCC(SUCC(y_))))) = GREATTER(x_ y_);
+GREATTER(SUCC(SUCC(SUCC(x_))) SUCC(SUCC(SUCC(y_)))) = GREATTER(x_ y_);
+GREATTER(SUCC(SUCC(x_)) SUCC(SUCC(y_))) = GREATTER(x_ y_);
+GREATTER(SUCC(x_) SUCC(y_)) = GREATTER(x_ y_);
+
+# if p x y: if p then x else y
+IF(TRUE x_ y_) = x_;
+IF(FALSE x_ y_) = y_;
+
+# nth n xs: give item n in xs
+NTH(0 CONS(x_ y_)) = x_;
+NTH(SUCC(n_) CONS(x_ y_)) = NTH(n_ y_);
+
+# count x xs: how many times does x appear in xs?
+COUNT(t_ NIL) = 0;
+COUNT(u_ CONS(u_ w_)) = SUCC(COUNT(u_ w_));
+COUNT(x_ CONS(y_ z_)) = COUNT(x_ z_);

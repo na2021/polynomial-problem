@@ -1,0 +1,2 @@
+CUMSUM1(NIL) = NIL;
+CUMSUM1(CONS(x_ y_)) = CONS(x_ ADD(x_ CUMSUM1(y_)));
