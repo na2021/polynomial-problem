@@ -1,0 +1,2 @@
+IIH1(CONS(SUCC(ZERO) y_)) = SUCC(ZERO);
+IIH1(CONS(SUCC(SUCC(x_)) y_)) = NTH(x_ y_);

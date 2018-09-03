@@ -1,0 +1,1 @@
+CONST1(x_) = SUCC(SUCC(SUCC(0)));

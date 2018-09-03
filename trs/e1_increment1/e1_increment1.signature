@@ -1,4 +1,4 @@
-C: list(nat) -> nat;
+INCREMENT1: list(nat) -> list(nat);
 CONS: nat -> list(nat) -> list(nat);
 NIL: list(nat);
 0: digit;
