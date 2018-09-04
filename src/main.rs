@@ -6,6 +6,7 @@
 //! "Wikipedia - Hindley-Milner Type System"
 //! [3]: https://en.wikipedia.org/wiki/Rewriting#Term_rewriting_systems
 //! "Wikipedia - Term Rewriting Systems"
+extern crate docopt;
 #[macro_use]
 extern crate polytype;
 extern crate programinduction;
@@ -15,164 +16,276 @@ extern crate serde;
 extern crate serde_derive;
 extern crate serde_json;
 extern crate term_rewriting;
+extern crate toml;
 
-use polytype::{Context as TypeContext, TypeSchema};
-use programinduction::{GP, GPParams};
-use programinduction::trs::{make_task_from_data, Lexicon,  GeneticParams, ModelParams};
+use docopt::Docopt;
+use polytype::Context as TypeContext;
+use programinduction::trs::{
+    parse_lexicon, parse_templates, parse_trs, task_by_rewrite, GeneticParams, Lexicon,
+    ModelParams, TRS,
+};
+use programinduction::{GPParams, GPSelection, GP};
 use rand::rngs::SmallRng;
-use rand::SeedableRng;
+use rand::{Rng, SeedableRng};
+use std::fs::read_to_string;
+use std::io;
+use std::path::PathBuf;
 use std::str;
-use term_rewriting::{Context, parse_trs, Rule, RuleContext, Signature};
+use term_rewriting::{Operator, Rule, RuleContext};
 use utils::*;
 
 fn main() -> io::Result<()> {
-    start_section("So it begins!");
-    // initialize prng
+    // TODO: anything to compress here?
+    let sim_args = load_args()?;
     let rng = &mut SmallRng::from_seed([1u8; 16]);
-
-    // initialize parameters
-    let p_partial = 0.2;
-    let p_observe = 0.0;
-    let max_steps = 50;
-    let max_size = Some(500);
-    let n_crosses = 5;
-    let p_add = 0.5;
-    let p_keep = 0.5;
-    let max_sample_depth = 4;
-    let deterministic = true;
-    let atom_weights = (0.5, 0.25, 0.25);
-    let generations_per_datum = 10;
-    let population_size = 5;
-    let tournament_size = 5;
-    let mutation_prob = 0.95;
-    let n_delta = 10;
-
-    // initialize structs
-    let knowledge: Vec<Rule> = vec![];
     let mut ctx = TypeContext::default();
-    let mut sig = Signature::default();
-    let mut ops: Vec<TypeSchema> = vec![];
-    let vars: Vec<TypeSchema> = vec![];
+    let mut lex = load_lexicon(&sim_args.problem_dir, sim_args.deterministic, &mut ctx)?;
+    let data = load_routine(&lex)?;
+    let params = initialize_params(sim_args, &mut lex, &mut ctx)?;
+    let mut pop = initialize_population(&lex, &params, &mut ctx, rng)?;
+    let h_star = load_h_star(&params.sim_params, &mut lex, &mut ctx)?;
+    evolve(&data, &mut pop, &h_star, &lex, &params, &mut ctx, rng)?;
+    let llike = -h_star.log_likelihood(&data, params.model_params);
+    let lpost = llike - h_star.pseudo_log_prior();
+    report_results(llike, lpost, params.model_params, &data, &pop);
+    summarize_results(lpost, &pop);
+    Ok(())
+}
 
-    start_section("Choosing Routine");
-    let routine = loop {
-        let routines_str = "[{\"type\":{\"input\":\"list-of-int\",\"output\":\"int\"},\"examples\":[{\"i\":[5,10],\"o\":5},{\"i\":[9,13,12],\"o\":9},{\"i\":[7,15],\"o\":7},{\"i\":[15,0,14,8,8,12],\"o\":15},{\"i\":[10,6,10,0],\"o\":10},{\"i\":[3,7,3,0],\"o\":3},{\"i\":[8,2,9],\"o\":8},{\"i\":[8,16,3,8],\"o\":8},{\"i\":[12,0,12,12,12],\"o\":12},{\"i\":[11,11,10,7,9],\"o\":11}],\"name\":\"((head (dyn . 0)))\"}]";
-        let routines: Vec<Routine> = serde_json::from_str(routines_str).unwrap();
-        match routines.len() {
-            0 => (),
-            1 => break routines[0].clone(),
-            _ => panic!("static exporter returned more than one routine.")
+fn start_section(s: &str) {
+    println!("\n{}\n{}", s, "-".repeat(s.len()));
+}
+
+fn initialize_population<R: Rng>(
+    lex: &Lexicon,
+    params: &Params,
+    ctx: &mut TypeContext,
+    rng: &mut R,
+) -> io::Result<Vec<(TRS, f64)>> {
+    let task = task_by_rewrite(&[], params.model_params, lex, ctx, ())
+        .or_else(|_| Err(io::Error::new(io::ErrorKind::Other, "bad datum")))?;
+    Ok(lex.init(&params.genetic_params, rng, &params.gp_params, &task))
+}
+
+fn load_args() -> io::Result<TOMLArgs> {
+    let args: utils::Args = Docopt::new("Usage: sim <args-file>")
+        .and_then(|d| d.deserialize())
+        .unwrap_or_else(|e| e.exit());
+    let sim_file = args.arg_args_file;
+    toml::from_str(&read_to_string(sim_file)?)
+        .or_else(|_| Err(io::Error::new(io::ErrorKind::Other, "bad datum")))
+}
+
+fn load_routine(lex: &Lexicon) -> io::Result<Vec<Rule>> {
+    start_section("Loading Routine");
+    //let output = Command::new(exe_home)
+    //    .arg("-u")
+    //    .arg("--routines")
+    //    .arg("1")
+    //    .arg("--examples")
+    //    .arg(&n_data.to_string())
+    //    .output().unwrap();
+    //let routines_str = str::from_utf8(&output.stdout).unwrap();
+    let routines_str = "[{\"type\":{\"input\":\"list-of-int\",\"output\":\"int\"},\"examples\":[{\"i\":[5,10],\"o\":5},{\"i\":[9,13,12],\"o\":9},{\"i\":[7,15],\"o\":7},{\"i\":[15,0,14,8,8,12],\"o\":15},{\"i\":[10,6,10,0],\"o\":10},{\"i\":[3,7,3,0],\"o\":3},{\"i\":[8,2,9],\"o\":8},{\"i\":[8,16,3,8],\"o\":8},{\"i\":[12,0,12,12,12],\"o\":12},{\"i\":[11,11,10,7,9],\"o\":11}],\"name\":\"((head (dyn . 0)))\"}]";
+    let routines: Vec<Routine> = serde_json::from_str(routines_str).unwrap();
+    match routines.len() {
+        0 => Err(io::Error::new(
+            io::ErrorKind::Other,
+            "static exporter returned no routines.",
+        )),
+        1 => {
+            println!("name: {}", routines[0].name);
+            println!("type: {:?} -> {:?}", routines[0].tp.i, routines[0].tp.o);
+            let routine = routines[0].clone();
+            let concept = identify_concept(&lex, &routine)?;
+            let data = load_data(&lex, routine, &concept)?;
+            Ok(data)
         }
-    };
-
-    start_section("Concept");
-    let otp = TypeSchema::from(routine.tp.o);
-    let itp = TypeSchema::from(routine.tp.i);
-    let tp = ptp!(@arrow[itp.instantiate(&mut ctx), otp.instantiate(&mut ctx)]);
-    let concept = sig.new_op(1, Some("C".to_string()));
-    ops.push(tp.clone());
-    let cons = sig.new_op(2, Some("CONS".to_string()));
-    ops.push(ptp!(@arrow[tp!(int),
-                         tp!(list(tp!(int))),
-                         tp!(list(tp!(int)))]));
-    let nil = sig.new_op(0, Some("NIL".to_string()));
-    ops.push(ptp!(list(tp!(int))));
-    println!("Name/Arity: {}/{}", concept.display(&sig), concept.arity(&sig));
-    println!("Definition: {}", routine.name);
-    println!("Type: {}", tp);
-
-    start_section("Data");
-    let data: Vec<Rule> = routine.examples.into_iter().map(|x| x.to_rule(&mut sig, &mut ops, concept)).collect();
-    for datum in &data {
-        println!("{}", datum.pretty(&sig));
+        _ => Err(io::Error::new(
+            io::ErrorKind::Other,
+            "static exporter returned more than one routine.",
+        )),
     }
+}
 
-    start_section("Initializing Population");
-    let model_params = ModelParams {
-        p_partial,
-        p_observe,
-        max_steps,
-        max_size,
-    };
-    let gp_params = GPParams {
-        population_size,
-        tournament_size,
-        mutation_prob,
-        n_delta,
-    };
-    let templates = vec![
-        // [!] = [!]
-        RuleContext {
-            lhs: Context::Hole,
-            rhs: vec![Context::Hole],
-        },
-        // C nil = [!]
-        RuleContext {
-            lhs: Context::Application {
-                op: concept,
-                args: vec![Context::Application {
-                    op: nil,
-                    args: vec![]
-                }]
-            },
-            rhs: vec![Context::Hole],
-        },
-        // C cons([!], [!]) = [!]
-        RuleContext {
-            lhs: Context::Application {
-                op: concept,
-                args: vec![Context::Application {
-                    op: cons,
-                    args: vec![
-                        Context::Hole,
-                        Context::Hole,
-                    ]
-                }]
-            },
-            rhs: vec![Context::Hole],
-        },
-    ];
-    let params = GeneticParams {
-        max_sample_depth,
-        n_crosses,
-        p_add,
-        p_keep,
-        deterministic,
-        templates,
-        atom_weights
-    };
-    let mut task = make_task_from_data(&data[..0], otp.clone(), model_params);
-    let s = Lexicon::from_signature(sig, ops, vars, knowledge);
-    // FIXME: These shouldn't be constants.
-    let h_star_lprior = 0.0;
-    let h_star_llike = 0.0;
-    let h_star_lpost = h_star_lprior + h_star_llike;
+fn identify_concept(lex: &Lexicon, routine: &Routine) -> io::Result<Operator> {
+    start_section("Concept");
+    let concept = lex
+        .has_op(Some("C"), 1)
+        .or_else(|_| Err(io::Error::new(io::ErrorKind::Other, "No C")))?;
+    {
+        //let sig = s.signature();
+        println!(
+            "{}/{}: {}",
+            concept.display(),
+            concept.arity(),
+            routine.name,
+        );
+    }
+    Ok(concept)
+}
 
-    let mut pop = s.init(&params, rng, &gp_params, &task);
+fn load_lexicon(
+    problem_dir: &str,
+    deterministic: bool,
+    ctx: &mut TypeContext,
+) -> io::Result<Lexicon> {
+    start_section("Loading lexicon");
+    let sig_file: PathBuf = [problem_dir, "signature.trs"].iter().collect();
+    let sig_string = read_to_string(sig_file)?;
+    let bg_file: PathBuf = [problem_dir, "background.trs"].iter().collect();
+    let bg_string = read_to_string(bg_file)?;
+    let lex = parse_lexicon(&sig_string, &bg_string, deterministic, ctx)
+        .or_else(|_| Err(io::Error::new(io::ErrorKind::Other, "cannot parse lexicon")))?;
+    println!("{}", lex);
+    Ok(lex)
+}
 
-    start_section("Evolving");
-    for n_data in 0..=(data.len()) {
-        if n_data > 0 {
-            task = make_task_from_data(&data[0..n_data], otp.clone(), model_params);
-            for i in pop.iter_mut() {
-                i.1 = (task.oracle)(&s, &i.0);
-            }
+fn load_data(lex: &Lexicon, routine: Routine, concept: &Operator) -> io::Result<Vec<Rule>> {
+    start_section("Reading data");
+    let data: Vec<Rule> = routine
+        .examples
+        .into_iter()
+        .map(|x| x.to_rule(lex, concept.clone()))
+        .collect::<Result<Vec<Rule>, _>>()
+        .or_else(|_| Err(io::Error::new(io::ErrorKind::Other, "bad datum")))?;
+    {
+        //let sig = s.signature();
+        for datum in &data {
+            println!("{}", datum.pretty());
         }
-        for gen in 0..generations_per_datum {
-            s.evolve(&params, rng, &gp_params, &task, &mut pop);
+    }
+    Ok(data)
+}
+
+fn load_templates(
+    problem_dir: &str,
+    lex: &mut Lexicon,
+    ctx: &mut TypeContext,
+) -> io::Result<Vec<RuleContext>> {
+    start_section("Reading templates");
+    let template_file: PathBuf = [problem_dir, "templates.trs"].iter().collect();
+    let template_string = read_to_string(template_file)?;
+    let templates = parse_templates(&template_string, lex, ctx).or_else(|_| {
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            "cannot parse templates",
+        ))
+    })?;
+    {
+        //let sig = s.signature();
+        for template in &templates {
+            println!("{}", template.pretty());
+        }
+    }
+    Ok(templates)
+}
+
+fn initialize_params(
+    args: TOMLArgs,
+    lex: &mut Lexicon,
+    ctx: &mut TypeContext,
+) -> io::Result<Params> {
+    Ok(Params {
+        genetic_params: GeneticParams {
+            max_sample_depth: args.max_sample_depth,
+            n_crosses: args.n_crosses,
+            p_add: args.p_add,
+            p_keep: args.p_keep,
+            templates: load_templates(&args.problem_dir, lex, ctx)?,
+            atom_weights: (
+                args.variable_weight,
+                args.constant_weight,
+                args.function_weight,
+            ),
+        },
+        sim_params: SimulationParams {
+            generations_per_datum: args.generations_per_datum,
+            problem_dir: args.problem_dir,
+            deterministic: args.deterministic,
+        },
+        gp_params: GPParams {
+            selection: match args.selection.as_str() {
+                "probabilistic" | "Probabilistic" => GPSelection::Probabilistic,
+                _ => GPSelection::Deterministic,
+            },
+            population_size: args.population_size,
+            tournament_size: args.tournament_size,
+            mutation_prob: args.mutation_prob,
+            n_delta: args.n_delta,
+        },
+        model_params: ModelParams {
+            p_partial: args.p_partial,
+            p_observe: args.p_observe,
+            max_steps: args.max_steps,
+            max_size: args.max_size,
+        },
+    })
+}
+
+fn load_h_star(
+    sim_params: &SimulationParams,
+    lex: &mut Lexicon,
+    ctx: &mut TypeContext,
+) -> io::Result<TRS> {
+    start_section("Loading H*");
+    let h_star_file: PathBuf = [&sim_params.problem_dir, "h_star.trs"].iter().collect();
+    let h_star_string = read_to_string(h_star_file)?;
+    let h_star = parse_trs(&h_star_string, lex, ctx)
+        .or_else(|_| Err(io::Error::new(io::ErrorKind::Other, "cannot parse TRS")))?;
+    println!("{}", h_star);
+    Ok(h_star)
+}
+
+#[cfg_attr(feature = "cargo-clippy", allow(too_many_arguments))]
+fn evolve<R: Rng>(
+    data: &[Rule],
+    pop: &mut Vec<(TRS, f64)>,
+    h_star: &TRS,
+    lex: &Lexicon,
+    params: &Params,
+    ctx: &mut TypeContext,
+    rng: &mut R,
+) -> io::Result<()> {
+    start_section("Evolving");
+    println!("n_data,generation,id,llikelihood,lprior,score,difference,description");
+    for n_data in 0..=(data.len()) {
+        let task = task_by_rewrite(&data[0..n_data], params.model_params, lex, ctx, ())
+            .or_else(|_| Err(io::Error::new(io::ErrorKind::Other, "bad datum")))?;
+        for i in pop.iter_mut() {
+            i.1 = (task.oracle)(lex, &i.0);
+        }
+        let h_star_lpost = (task.oracle)(lex, h_star);
+
+        for gen in 0..params.sim_params.generations_per_datum {
+            lex.evolve(&params.genetic_params, rng, &params.gp_params, &task, pop);
             for (i, (individual, score)) in pop.iter().enumerate() {
-                println!("{},{},{},{:.4},{:.4},{:?}",
-                         n_data,
-                         gen,
-                         i,
-                         score,
-                         h_star_lpost - score,
-                         individual.to_string(),
+                let llike = -individual.log_likelihood(data, params.model_params);
+                let lprior = -individual.pseudo_log_prior();
+                println!(
+                    "{},{},{},{:.4},{:.4},{:.4},{:.4},{:?}",
+                    n_data,
+                    gen,
+                    i,
+                    llike,
+                    lprior,
+                    score,
+                    h_star_lpost - score,
+                    individual.to_string(),
                 );
             }
         }
     }
+    Ok(())
+}
 
+fn report_results(
+    h_star_llike: f64,
+    h_star_lpost: f64,
+    model_params: ModelParams,
+    data: &[Rule],
+    pop: &[(TRS, f64)],
+) {
     start_section("Results");
     println!("rank,nlprior,nllike,nlpost,correct,better,difference");
     for (i, (individual, _)) in pop.iter().enumerate() {
@@ -191,32 +304,71 @@ fn main() -> io::Result<()> {
             individual.to_string(),
         );
     }
-
-    start_section("Summary");
-    println!("best_score,best_difference,mean_score,mean_difference");
-    let mean_score = pop.iter().map(|x| x.1).sum::<f64>()/(pop.len() as f64);
-    println!("{:.4},{:.4},{:.4},{:.4}",
-             pop[0].1,
-             h_star_lpost - pop[0].1,
-             mean_score,
-             h_star_lpost - mean_score,
-    );
-
-    start_section("Done!");
-    Ok(())
 }
 
-fn start_section(s: &str) {
-    println!("\n{}\n{}", s, "-".repeat(s.len()));
+fn summarize_results(h_star_score: f64, pop: &[(TRS, f64)]) {
+    start_section("Summary");
+    println!("best_score,best_difference,mean_score,mean_difference");
+    let mean_score = pop.iter().map(|x| x.1).sum::<f64>() / (pop.len() as f64);
+    println!(
+        "{:.4},{:.4},{:.4},{:.4}",
+        pop[0].1,
+        h_star_score - pop[0].1,
+        mean_score,
+        h_star_score - mean_score,
+    );
 }
 
 mod utils {
-    use term_rewriting::{Operator, Rule, Signature, Term};
     use polytype::TypeSchema;
+    use programinduction::trs::{GeneticParams, Lexicon, ModelParams};
+    use programinduction::GPParams;
+    use term_rewriting::{Operator, Rule, Term};
+
+    #[derive(Deserialize)]
+    pub struct Args {
+        pub arg_args_file: String,
+    }
+
+    #[derive(Deserialize)]
+    pub struct TOMLArgs {
+        pub generations_per_datum: usize,
+        pub problem_dir: String,
+        pub deterministic: bool,
+        pub max_sample_depth: usize,
+        pub n_crosses: usize,
+        pub p_add: f64,
+        pub p_keep: f64,
+        pub variable_weight: f64,
+        pub constant_weight: f64,
+        pub function_weight: f64,
+        pub selection: String,
+        pub population_size: usize,
+        pub tournament_size: usize,
+        pub mutation_prob: f64,
+        pub n_delta: usize,
+        pub p_partial: f64,
+        pub p_observe: f64,
+        pub max_steps: usize,
+        pub max_size: Option<usize>,
+    }
+
+    pub struct Params {
+        pub sim_params: SimulationParams,
+        pub genetic_params: GeneticParams,
+        pub gp_params: GPParams,
+        pub model_params: ModelParams,
+    }
+
+    pub struct SimulationParams {
+        pub generations_per_datum: usize,
+        pub problem_dir: String,
+        pub deterministic: bool,
+    }
 
     #[derive(Clone, Debug, Serialize, Deserialize)]
     pub struct Routine {
-        #[serde(rename="type")]
+        #[serde(rename = "type")]
         pub tp: RoutineType,
         pub examples: Vec<Datum>,
         pub name: String,
@@ -225,39 +377,34 @@ mod utils {
     #[derive(Clone, Debug, Serialize, Deserialize)]
     pub struct Datum {
         i: Value,
-        o: Value
+        o: Value,
     }
     impl Datum {
         /// Convert a `Datum` to a term rewriting [`Rule`].
         ///
         /// [`Rule`]: ../term_rewriting/struct.Rule.html
-        pub fn to_rule(
-            &self,
-            sig: &mut Signature,
-            ops: &mut Vec<TypeSchema>,
-            concept: Operator
-        ) -> Rule {
-            let lhs = self.i.to_term(sig, ops, Some(concept));
-            let rhs = self.o.to_term(sig, ops, None);
-            Rule::new(lhs, vec![rhs]).unwrap()
+        pub fn to_rule(&self, lex: &Lexicon, concept: Operator) -> Result<Rule, ()> {
+            let lhs = self.i.to_term(lex, Some(concept))?;
+            let rhs = self.o.to_term(lex, None)?;
+            Rule::new(lhs, vec![rhs]).ok_or(())
         }
     }
 
     #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
     pub struct RoutineType {
-        #[serde(rename="input")]
+        #[serde(rename = "input")]
         pub i: IOType,
-        #[serde(rename="output")]
-        pub o: IOType
+        #[serde(rename = "output")]
+        pub o: IOType,
     }
 
     #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
     pub enum IOType {
-        #[serde(rename="bool")]
+        #[serde(rename = "bool")]
         Bool,
-        #[serde(rename="list-of-int")]
+        #[serde(rename = "list-of-int")]
         IntList,
-        #[serde(rename="int")]
+        #[serde(rename = "int")]
         Int,
     }
     impl From<IOType> for TypeSchema {
@@ -273,93 +420,82 @@ mod utils {
     #[derive(Clone, Debug, Serialize, Deserialize)]
     #[serde(untagged)]
     pub enum Value {
-        Int(isize),
-        IntList(Vec<isize>),
+        Int(usize),
+        IntList(Vec<usize>),
         Bool(bool),
     }
     impl Value {
-        fn to_term(
-            &self,
-            sig: &mut Signature,
-            ops: &mut Vec<TypeSchema>,
-            lhs: Option<Operator>,
-        ) -> Term {
+        fn to_term(&self, lex: &Lexicon, lhs: Option<Operator>) -> Result<Term, ()> {
             let base_term = match self {
-                Value::Int(x) => Value::num_to_term(sig, ops, *x),
-                Value::IntList(xs) => Value::list_to_term(sig, ops, xs),
-                Value::Bool(true) => Term::Application{
-                    op: Value::get_op(sig, ops, 0, Some("true"), &ptp!(bool)),
-                    args: vec![]
+                Value::Int(x) => Value::num_to_term(lex, *x)?,
+                Value::IntList(xs) => Value::list_to_term(lex, &xs)?,
+                Value::Bool(true) => Term::Application {
+                    op: lex.has_op(Some("true"), 0)?,
+                    args: vec![],
                 },
-                Value::Bool(false) => Term::Application{
-                    op: Value::get_op(sig, ops, 0, Some("false"), &ptp!(bool)),
-                    args: vec![]
+                Value::Bool(false) => Term::Application {
+                    op: lex.has_op(Some("false"), 0)?,
+                    args: vec![],
                 },
             };
             if let Some(op) = lhs {
-                Term::Application {
+                Ok(Term::Application {
                     op,
-                    args: vec![base_term]
-                }
+                    args: vec![base_term],
+                })
             } else {
-                base_term
+                Ok(base_term)
             }
         }
-        fn list_to_term(
-            sig: &mut Signature,
-            ops: &mut Vec<TypeSchema>,
-            xs: &[isize],
-        ) -> Term {
-            let ts: Vec<Term> = xs.iter().map(|&x| Value::num_to_term(sig, ops, x)).rev().collect();
-            let nil = Value::get_op(sig, ops, 0, Some("NIL"), &ptp!(list(tp!(int))));
-            let cons = Value::get_op(sig, ops, 2, Some("CONS"), &ptp!(@arrow[tp!(int), tp!(list(tp!(int))), tp!(list(tp!(int)))]));
-            let mut term = Term::Application{ op: nil, args: vec![] };
+        fn list_to_term(lex: &Lexicon, xs: &[usize]) -> Result<Term, ()> {
+            let ts: Vec<Term> = xs
+                .iter()
+                .map(|&x| Value::num_to_term(lex, x))
+                .rev()
+                .collect::<Result<Vec<_>, _>>()?;
+            let nil = lex.has_op(Some("NIL"), 0)?;
+            let cons = lex.has_op(Some("CONS"), 2)?;
+            let mut term = Term::Application {
+                op: nil,
+                args: vec![],
+            };
             for t in ts {
                 term = Term::Application {
-                    op: cons,
-                    args: vec![t, term]
+                    op: cons.clone(),
+                    args: vec![t, term],
                 };
             }
-            term
+            Ok(term)
         }
-        fn num_to_term(
-            sig: &mut Signature,
-            ops: &mut Vec<TypeSchema>,
-            n: isize,
-        ) -> Term {
-            if n < 0 {
-                let neg = Value::get_op(sig, ops, 1, Some("neg"), &ptp!(@arrow[tp!(int), tp!(int)]));
-                let num = Value::get_op(sig, ops, 0, Some(&(-n).to_string()), &ptp!(int));
-                Term::Application {
-                    op: neg,
-                    args: vec![Term::Application {
-                        op: num,
-                        args: vec![]
-                    }],
-                }
-            } else {
-                let num = Value::get_op(sig, ops, 0, Some(&n.to_string()), &ptp!(int));
-                Term::Application {
-                    op: num,
-                    args: vec![],
-                }
-            }
+        fn make_digit(lex: &Lexicon, n: usize) -> Result<Term, ()> {
+            let digit = lex.has_op(Some("DIGIT"), 1)?;
+            let arg_digit = lex.has_op(Some(&n.to_string()), 0)?;
+            let arg = Term::Application {
+                op: arg_digit,
+                args: vec![],
+            };
+            Ok(Term::Application {
+                op: digit,
+                args: vec![arg],
+            })
         }
-        fn get_op(sig: &mut Signature, ops: &mut Vec<TypeSchema>, arity: u32, name: Option<&str>, schema: &TypeSchema) -> Operator {
-            if let Some(op) = Value::find_op(sig, ops, arity, name, schema) {
-                op
-            } else {
-                ops.push(schema.clone());
-                sig.new_op(arity, name.map(|x| x.to_string()))
-            }
-        }
-        fn find_op(sig: &Signature, ops: &mut Vec<TypeSchema>, arity: u32, name: Option<&str>, schema: &TypeSchema) -> Option<Operator> {
-            for (i, o) in sig.operators().into_iter().enumerate() {
-                if o.arity(&sig) == arity && o.name(&sig) == name && ops[i] == *schema {
-                    return Some(o);
+        fn num_to_term(lex: &Lexicon, num: usize) -> Result<Term, ()> {
+            match num {
+                0...9 => Value::make_digit(lex, num),
+                _ => {
+                    let decc = lex.has_op(Some("DECC"), 2)?;
+                    let arg1 = Value::num_to_term(lex, num / 10)?;
+                    let arg2_digit = lex.has_op(Some(&(num % 10).to_string()), 0)?;
+                    let arg2 = Term::Application {
+                        op: arg2_digit,
+                        args: vec![],
+                    };
+                    Ok(Term::Application {
+                        op: decc,
+                        args: vec![arg1, arg2],
+                    })
                 }
             }
-            None
         }
     }
 }

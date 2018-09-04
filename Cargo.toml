@@ -11,13 +11,15 @@ keywords = ["term-rewriting", "hindley-milner", "learning", "program-induction",
 categories = ["science", "simulation"]
 
 [dependencies]
+docopt = "1.0"
 polytype = "6.0"
-programinduction = "=0.7"
+programinduction = "0.7"
 rand = "0.5"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
-term_rewriting = "0.3"
+term_rewriting = "0.4"
+toml = "0.4"
 
 [patch.crates-io]
 programinduction = { path = "../program-induction" }
