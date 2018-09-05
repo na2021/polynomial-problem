@@ -11,26 +11,27 @@ The basic idea is to:
 
    Using the Martha's Machines paradigm, we'll collect learning curves from 30 subjects for each of our concepts on Mechanical Turk. As per the original experiment, we'll pay participants $1 for 10 trials for each of 5 concepts. We can stick with 10 here because our goal is to identify primitives, which should be quickly learned. Concepts and input/output pairs will be randomly sampled for each participant.
 
-3. automatically cluster the learning curves
+3. automatically identify the primitives
 
-   The basic idea I have for this part of the experiment is to run an automated clustering analysis to break the learning curves into a finite number of discrete clusters. I would appreciate suggestions for an appropriate clustering analysis.
+   The basic idea I have for this part of the experiment is to run some automated analysis that uses the learning curves to separate primitive concepts from non-primitive concepts. I had initially thought some sort of clustering analysis would work, but given that we want to consider higher-order functions, the problem is more difficult. I would appreciate suggestions for appropriate analyses.
 
-   We may also want to use a similar technique within each concept, or at least a sample of concepts, to show that mean learning curves are a good description of the data. This could used alongside visually plotting distributions (and not just confidence intervals) around the curves.
+5. Report our findings
 
-4. identify one or more clusters as primitive (e.g. early elbow)
+   - What are the primitives? any borderline cases?
+   - We may want to use a clustering technique within each concept, or at least a sample of concepts, to show that mean learning curves are a good description of the data (no averaging effects). This could used alongside visually plotting distributions (and not just confidence intervals) around the curves.
 
-   My prediction is that at least one of the clusters discovered above will demonstrate extremely fast learning and near ceiling performance after learning. We'll call the concepts in these clusters primitive.
+*** Questions
+- What technique do we use to decide what's primitive?
 
-*** Challenges
-- How do we deal with higher-order functions like map, fold, filter, any, all, iterate, take_while, drop_while, unfold, find, ...?
+  I would appreciate suggestions here.
 
-  Consider the case of map. The difficulty here is that map cannot be used by itself. It is parameterized not by constants but by functions. This seems like it might require some sort of hierarchical reasoning. See the next question for more details.
+- How do we deal with higher-order functions like map, fold, filter, any, all, iterate, take_while, drop_while, unfold, find, repeat, ...?
+
+  Consider the case of map. The difficulty here is that map cannot be used by itself. It is parameterized not by constants but by other functions. Moreover, map can be defined in terms of other higher-order functions (e.g. a map is a kind of fold). This seems like it might require some sort of hierarchical reasoning to resolve.
 
 - What if functions which humans learn in the experiment cannot be built from the concepts our analysis reveals as primitives?
 
-  This concern is related to the higher-order function concern but also broader than that particular issue, so we may have to use a couple different approaches. For concepts involving higher-order functions, if the entire concept is marked as primitive, it can be added to the grammar just like other concept. If the the overall concept is learnable but not primitive, the behavior must be available in the grammar in some fashion. One difficulty, though, is that none of these concepts have unique definitions. For example, fold is highly expressive and can be used to simulate map, filter, any, all, .... What we include depends on the strength of the evidence for fold apart from its derivatives, as well as how learnable compound concepts appear to be as their length and complexity increases. If complex concepts typically aren't very learnable, then map, filter, etc. are more likely than just fold, while they are less likely if complex concepts are easily learned. In short, we want to be sensitive to the fact that each concept we define will have multiple alternative definitions consistent with different primitive bases, and its probability will also differ basis by basis.
-
-For concepts which don't involve higher-order functions, perhaps we extend the set of tested concepts in a targeted way, collect additional data, and repeat the analysis with the extended dataset until we get a consistent grammar. This gives us an iterative, convergent approach rather than a single, monolithic experiment.
+  Perhaps we extend the set of tested concepts in a targeted way, collect additional data, and repeat the analysis with the extended dataset until we get a consistent grammar. This gives us an iterative, convergent approach rather than a single, monolithic experiment. We could also design the analysis algorithm to always explain all the given concepts, making this a non-issue.
 
 - Do we sample complete reparameterizations or vary them systematically?
 
@@ -40,55 +41,54 @@ For concepts which don't involve higher-order functions, perhaps we extend the s
 
   Simply plotting the distribution should give us some good visual indicators. Running some sort of clustering technique on data from one or more individual concepts might also help us see if people tend to fall into multiple groups or behave similarly to one another.
 
-- What technique do we use to decide what's primitive?
-*** DSL
+- What DSL should we use to generate concepts?
 
-We will generate concepts using the following curried DSL:
+  Here's a partial list:
 
-#+BEGIN_EXAMPLE
-// list functions
-[ ]
-append
-prepend
-concatenate
-repeat
-range
-enumerate (list of indices for input list)
-map
-filter
-fold
-find (returns indices where function is true)
-length
-is_empty
-count
-unique
-first
-pop-first
-last
-pop-last
-index
-drop
-take
-slice
-insert
-remove
-reverse
-sort
-==
-max
-min
-contains
-all
-any
-// numerical functions
-0, 1, 2,... 99
-+, *, -, /, mod, ^
-<, >, ==
-// boolean functions
-true, false
-==, not, and, or
-if-then-else
-#+END_EXAMPLE
+  #+BEGIN_EXAMPLE
+  // list functions
+  [ ]
+  append
+  prepend
+  concatenate
+  repeat
+  range
+  enumerate (list of indices for input list)
+  map
+  filter
+  fold
+  find (returns indices where function is true)
+  length
+  is_empty
+  count
+  unique
+  first
+  pop-first
+  last
+  pop-last
+  index
+  drop
+  take
+  slice
+  insert
+  remove
+  reverse
+  sort
+  ==
+  max
+  min
+  contains
+  all
+  any
+  // numerical functions
+  0, 1, 2,... 99
+  +, *, -, /, mod, ^
+  <, >, ==
+  // boolean functions
+  true, false
+  ==, not, and, or
+  if-then-else
+  #+END_EXAMPLE
 ** Experiment 1 (explaining variance)
 The goal of this experiment is to empirically establish variance in the difficulty of learning various list transformation concepts and explain a significant portion that variance using program induction: learning in a space of TRSs.
 
