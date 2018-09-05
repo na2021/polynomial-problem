@@ -1,0 +1,2 @@
+C(NIL) = 0;
+C(CONS(x_ y_)) = IF(GREATER(x_ SUM(y_)) x_ SUM(y_));

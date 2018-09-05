@@ -1,3 +1,0 @@
-DEDUPLICATE1(CONS([!] [!])) = [!];
-DEDUPLICATE1(NIL) = [!];
-[!] = [!];

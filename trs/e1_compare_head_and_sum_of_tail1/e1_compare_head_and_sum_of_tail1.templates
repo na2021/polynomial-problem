@@ -1,3 +1,0 @@
-COMPARE_HEAD_AND_SUM_OF_TAIL1(CONS([!] [!])) = [!];
-COMPARE_HEAD_AND_SUM_OF_TAIL1(NIL) = [!];
-[!] = [!];

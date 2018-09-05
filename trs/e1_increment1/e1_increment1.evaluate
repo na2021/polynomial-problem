@@ -1,1 +1,0 @@
-INCREMENT1(x_) = ADD(SUCC(ZERO) x_);

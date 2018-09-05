@@ -1,1 +1,0 @@
-COUNT31(x_) = COUNT(SUCC(SUCC(SUCC(ZERO))) x_);

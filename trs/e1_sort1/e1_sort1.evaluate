@@ -1,2 +1,0 @@
-SORT1(NIL) = NIL;
-SORT1(CONS(x_ y_)) = INSERT(x_ SORT(y_));
