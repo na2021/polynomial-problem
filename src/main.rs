@@ -38,13 +38,12 @@ fn main() -> io::Result<()> {
     // TODO: anything to compress here?
     let sim_args = load_args()?;
     let rng = &mut SmallRng::from_seed([1u8; 16]);
-    let mut ctx = TypeContext::default();
-    let mut lex = load_lexicon(&sim_args.problem_dir, sim_args.deterministic, &mut ctx)?;
+    let mut lex = load_lexicon(&sim_args.problem_dir, sim_args.deterministic)?;
     let data = load_routine(&lex)?;
-    let params = initialize_params(sim_args, &mut lex, &mut ctx)?;
-    let mut pop = initialize_population(&lex, &params, &mut ctx, rng)?;
-    let h_star = load_h_star(&params.sim_params, &mut lex, &mut ctx)?;
-    evolve(&data, &mut pop, &h_star, &lex, &params, &mut ctx, rng)?;
+    let params = initialize_params(sim_args, &mut lex)?;
+    let mut pop = initialize_population(&lex, &params, rng)?;
+    let h_star = load_h_star(&params.sim_params, &mut lex)?;
+    evolve(&data, &mut pop, &h_star, &lex, &params, rng)?;
     let llike = -h_star.log_likelihood(&data, params.model_params);
     let lpost = llike - h_star.pseudo_log_prior();
     report_results(llike, lpost, params.model_params, &data, &pop);
@@ -59,10 +58,9 @@ fn start_section(s: &str) {
 fn initialize_population<R: Rng>(
     lex: &Lexicon,
     params: &Params,
-    ctx: &mut TypeContext,
     rng: &mut R,
 ) -> io::Result<Vec<(TRS, f64)>> {
-    let task = task_by_rewrite(&[], params.model_params, lex, ctx, ())
+    let task = task_by_rewrite(&[], params.model_params, lex, ())
         .or_else(|_| Err(io::Error::new(io::ErrorKind::Other, "bad datum")))?;
     Ok(lex.init(&params.genetic_params, rng, &params.gp_params, &task))
 }
@@ -128,14 +126,13 @@ fn identify_concept(lex: &Lexicon, routine: &Routine) -> io::Result<Operator> {
 fn load_lexicon(
     problem_dir: &str,
     deterministic: bool,
-    ctx: &mut TypeContext,
 ) -> io::Result<Lexicon> {
     start_section("Loading lexicon");
-    let sig_file: PathBuf = [problem_dir, "signature.trs"].iter().collect();
+    let sig_file: PathBuf = [problem_dir, "signature"].iter().collect();
     let sig_string = read_to_string(sig_file)?;
-    let bg_file: PathBuf = [problem_dir, "background.trs"].iter().collect();
+    let bg_file: PathBuf = [problem_dir, "background"].iter().collect();
     let bg_string = read_to_string(bg_file)?;
-    let lex = parse_lexicon(&sig_string, &bg_string, deterministic, ctx)
+    let lex = parse_lexicon(&sig_string, &bg_string, deterministic, TypeContext::default())
         .or_else(|_| Err(io::Error::new(io::ErrorKind::Other, "cannot parse lexicon")))?;
     println!("{}", lex);
     Ok(lex)
@@ -161,12 +158,11 @@ fn load_data(lex: &Lexicon, routine: Routine, concept: &Operator) -> io::Result<
 fn load_templates(
     problem_dir: &str,
     lex: &mut Lexicon,
-    ctx: &mut TypeContext,
 ) -> io::Result<Vec<RuleContext>> {
     start_section("Reading templates");
-    let template_file: PathBuf = [problem_dir, "templates.trs"].iter().collect();
+    let template_file: PathBuf = [problem_dir, "templates"].iter().collect();
     let template_string = read_to_string(template_file)?;
-    let templates = parse_templates(&template_string, lex, ctx).or_else(|_| {
+    let templates = parse_templates(&template_string, lex).or_else(|_| {
         Err(io::Error::new(
             io::ErrorKind::Other,
             "cannot parse templates",
@@ -184,7 +180,6 @@ fn load_templates(
 fn initialize_params(
     args: TOMLArgs,
     lex: &mut Lexicon,
-    ctx: &mut TypeContext,
 ) -> io::Result<Params> {
     Ok(Params {
         genetic_params: GeneticParams {
@@ -192,7 +187,7 @@ fn initialize_params(
             n_crosses: args.n_crosses,
             p_add: args.p_add,
             p_keep: args.p_keep,
-            templates: load_templates(&args.problem_dir, lex, ctx)?,
+            templates: load_templates(&args.problem_dir, lex)?,
             atom_weights: (
                 args.variable_weight,
                 args.constant_weight,
@@ -226,12 +221,11 @@ fn initialize_params(
 fn load_h_star(
     sim_params: &SimulationParams,
     lex: &mut Lexicon,
-    ctx: &mut TypeContext,
 ) -> io::Result<TRS> {
     start_section("Loading H*");
-    let h_star_file: PathBuf = [&sim_params.problem_dir, "h_star.trs"].iter().collect();
+    let h_star_file: PathBuf = [&sim_params.problem_dir, "evaluate"].iter().collect();
     let h_star_string = read_to_string(h_star_file)?;
-    let h_star = parse_trs(&h_star_string, lex, ctx)
+    let h_star = parse_trs(&h_star_string, lex)
         .or_else(|_| Err(io::Error::new(io::ErrorKind::Other, "cannot parse TRS")))?;
     println!("{}", h_star);
     Ok(h_star)
@@ -244,13 +238,12 @@ fn evolve<R: Rng>(
     h_star: &TRS,
     lex: &Lexicon,
     params: &Params,
-    ctx: &mut TypeContext,
     rng: &mut R,
 ) -> io::Result<()> {
     start_section("Evolving");
     println!("n_data,generation,id,llikelihood,lprior,score,difference,description");
     for n_data in 0..=(data.len()) {
-        let task = task_by_rewrite(&data[0..n_data], params.model_params, lex, ctx, ())
+        let task = task_by_rewrite(&data[0..n_data], params.model_params, lex, ())
             .or_else(|_| Err(io::Error::new(io::ErrorKind::Other, "bad datum")))?;
         for i in pop.iter_mut() {
             i.1 = (task.oracle)(lex, &i.0);
