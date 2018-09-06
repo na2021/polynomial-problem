@@ -30,6 +30,7 @@ use rand::{Rng, SeedableRng};
 use std::fs::read_to_string;
 use std::io;
 use std::path::PathBuf;
+use std::process::Command;
 use std::str;
 use term_rewriting::{Operator, Rule, RuleContext};
 use utils::*;
@@ -39,8 +40,8 @@ fn main() -> io::Result<()> {
     let sim_args = load_args()?;
     let rng = &mut SmallRng::from_seed([1u8; 16]);
     let mut lex = load_lexicon(&sim_args.problem_dir, sim_args.deterministic)?;
-    let data = load_routine(&lex)?;
     let params = initialize_params(sim_args, &mut lex)?;
+    let data = load_routine(&lex, &params.sim_params)?;
     let mut pop = initialize_population(&lex, &params, rng)?;
     let h_star = load_h_star(&params.sim_params, &mut lex)?;
     evolve(&data, &mut pop, &h_star, &lex, &params, rng)?;
@@ -74,91 +75,67 @@ fn load_args() -> io::Result<TOMLArgs> {
         .or_else(|_| Err(io::Error::new(io::ErrorKind::Other, "bad datum")))
 }
 
-fn load_routine(lex: &Lexicon) -> io::Result<Vec<Rule>> {
+fn load_routine(lex: &Lexicon, params: &SimulationParams) -> io::Result<Vec<Rule>> {
     start_section("Loading Routine");
-    //let output = Command::new(exe_home)
-    //    .arg("-u")
-    //    .arg("--routines")
-    //    .arg("1")
-    //    .arg("--examples")
-    //    .arg(&n_data.to_string())
-    //    .output().unwrap();
-    //let routines_str = str::from_utf8(&output.stdout).unwrap();
-    let routines_str = "[{\"type\":{\"input\":\"list-of-int\",\"output\":\"int\"},\"examples\":[{\"i\":[5,10],\"o\":5},{\"i\":[9,13,12],\"o\":9},{\"i\":[7,15],\"o\":7},{\"i\":[15,0,14,8,8,12],\"o\":15},{\"i\":[10,6,10,0],\"o\":10},{\"i\":[3,7,3,0],\"o\":3},{\"i\":[8,2,9],\"o\":8},{\"i\":[8,16,3,8],\"o\":8},{\"i\":[12,0,12,12,12],\"o\":12},{\"i\":[11,11,10,7,9],\"o\":11}],\"name\":\"((head (dyn . 0)))\"}]";
-    let routines: Vec<Routine> = serde_json::from_str(routines_str).unwrap();
-    match routines.len() {
-        0 => Err(io::Error::new(
-            io::ErrorKind::Other,
-            "static exporter returned no routines.",
-        )),
-        1 => {
-            println!("name: {}", routines[0].name);
-            println!("type: {:?} -> {:?}", routines[0].tp.i, routines[0].tp.o);
-            let routine = routines[0].clone();
-            let concept = identify_concept(&lex, &routine)?;
-            let data = load_data(&lex, routine, &concept)?;
-            Ok(data)
-        }
-        _ => Err(io::Error::new(
-            io::ErrorKind::Other,
-            "static exporter returned more than one routine.",
-        )),
-    }
+    let output = Command::new("../list-routines/list_routines_cli")
+        .arg("generate-examples")
+        .arg("--count")
+        .arg(&params.n_data.to_string())
+        .arg(&params.routine_name)
+        .output()
+        .unwrap();
+    let data_str = str::from_utf8(&output.stdout).unwrap();
+    let data: Vec<Datum> = serde_json::from_str(data_str).unwrap();
+    let concept = identify_concept(&lex, &params.routine_name)?;
+    Ok(load_data(&lex, &data, &concept)?)
 }
 
-fn identify_concept(lex: &Lexicon, routine: &Routine) -> io::Result<Operator> {
+fn identify_concept(lex: &Lexicon, routine_name: &str) -> io::Result<Operator> {
     start_section("Concept");
     let concept = lex
         .has_op(Some("C"), 1)
         .or_else(|_| Err(io::Error::new(io::ErrorKind::Other, "No C")))?;
     {
-        //let sig = s.signature();
         println!(
             "{}/{}: {}",
             concept.display(),
             concept.arity(),
-            routine.name,
+            routine_name,
         );
     }
     Ok(concept)
 }
 
-fn load_lexicon(
-    problem_dir: &str,
-    deterministic: bool,
-) -> io::Result<Lexicon> {
+fn load_lexicon(problem_dir: &str, deterministic: bool) -> io::Result<Lexicon> {
     start_section("Loading lexicon");
     let sig_file: PathBuf = [problem_dir, "signature"].iter().collect();
     let sig_string = read_to_string(sig_file)?;
     let bg_file: PathBuf = [problem_dir, "background"].iter().collect();
     let bg_string = read_to_string(bg_file)?;
-    let lex = parse_lexicon(&sig_string, &bg_string, deterministic, TypeContext::default())
-        .or_else(|_| Err(io::Error::new(io::ErrorKind::Other, "cannot parse lexicon")))?;
+    let lex = parse_lexicon(
+        &sig_string,
+        &bg_string,
+        deterministic,
+        TypeContext::default(),
+    ).or_else(|_| Err(io::Error::new(io::ErrorKind::Other, "cannot parse lexicon")))?;
     println!("{}", lex);
     Ok(lex)
 }
 
-fn load_data(lex: &Lexicon, routine: Routine, concept: &Operator) -> io::Result<Vec<Rule>> {
+fn load_data(lex: &Lexicon, examples: &[Datum], concept: &Operator) -> io::Result<Vec<Rule>> {
     start_section("Reading data");
-    let data: Vec<Rule> = routine
-        .examples
-        .into_iter()
+    let data: Vec<Rule> = examples
+        .iter()
         .map(|x| x.to_rule(lex, concept.clone()))
         .collect::<Result<Vec<Rule>, _>>()
         .or_else(|_| Err(io::Error::new(io::ErrorKind::Other, "bad datum")))?;
-    {
-        //let sig = s.signature();
-        for datum in &data {
-            println!("{}", datum.pretty());
-        }
+    for datum in &data {
+        println!("{}", datum.pretty());
     }
     Ok(data)
 }
 
-fn load_templates(
-    problem_dir: &str,
-    lex: &mut Lexicon,
-) -> io::Result<Vec<RuleContext>> {
+fn load_templates(problem_dir: &str, lex: &mut Lexicon) -> io::Result<Vec<RuleContext>> {
     start_section("Reading templates");
     let template_file: PathBuf = [problem_dir, "templates"].iter().collect();
     let template_string = read_to_string(template_file)?;
@@ -177,10 +154,7 @@ fn load_templates(
     Ok(templates)
 }
 
-fn initialize_params(
-    args: TOMLArgs,
-    lex: &mut Lexicon,
-) -> io::Result<Params> {
+fn initialize_params(args: TOMLArgs, lex: &mut Lexicon) -> io::Result<Params> {
     Ok(Params {
         genetic_params: GeneticParams {
             max_sample_depth: args.max_sample_depth,
@@ -195,6 +169,8 @@ fn initialize_params(
             ),
         },
         sim_params: SimulationParams {
+            n_data: args.n_data,
+            routine_name: args.routine_name,
             generations_per_datum: args.generations_per_datum,
             problem_dir: args.problem_dir,
             deterministic: args.deterministic,
@@ -218,10 +194,7 @@ fn initialize_params(
     })
 }
 
-fn load_h_star(
-    sim_params: &SimulationParams,
-    lex: &mut Lexicon,
-) -> io::Result<TRS> {
+fn load_h_star(sim_params: &SimulationParams, lex: &mut Lexicon) -> io::Result<TRS> {
     start_section("Loading H*");
     let h_star_file: PathBuf = [&sim_params.problem_dir, "evaluate"].iter().collect();
     let h_star_string = read_to_string(h_star_file)?;
@@ -325,6 +298,8 @@ mod utils {
 
     #[derive(Deserialize)]
     pub struct TOMLArgs {
+        pub n_data: usize,
+        pub routine_name: String,
         pub generations_per_datum: usize,
         pub problem_dir: String,
         pub deterministic: bool,
@@ -354,6 +329,8 @@ mod utils {
     }
 
     pub struct SimulationParams {
+        pub n_data: usize,
+        pub routine_name: String,
         pub generations_per_datum: usize,
         pub problem_dir: String,
         pub deterministic: bool,

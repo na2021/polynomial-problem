@@ -23,10 +23,10 @@ COUNT: nat -> list(nat) -> nat;
 NTH: nat -> list(nat) -> nat;
 EVEN: nat -> bool;
 GREATER: nat -> nat -> bool;
-GREATERDIGIT: digit -> digit -> bool; // private
+GREATERDIGIT: digit -> digit -> bool; # private
 PLUS: nat -> nat -> nat;
-CARRY: nat -> nat -> nat; // private
+CARRY: nat -> nat -> nat; # private
 MINUS: nat -> nat -> nat;
-BORROW: nat -> digit -> digit -> nat; // private
-MINUSDIGIT: digit -> digit -> digit; // private
+BORROW: nat -> digit -> digit -> nat; # private
+MINUSDIGIT: digit -> digit -> digit; # private
 IF: t0. bool -> t0 -> t0 -> t0;
