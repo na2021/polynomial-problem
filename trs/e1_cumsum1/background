@@ -6,7 +6,7 @@ IF(FALSE x_ y_) = y_;
 INSERT(x_ NIL) = CONS(x_ NIL);
 INSERT(x_ CONS(y_ z_)) = IF(GREATER(x_ y_) CONS(y_ INSERT(x_ z_)) CONS(x_ CONS(y_ z_)));
 
-# remove x xs: remove x from xs (filter a specIFic element)
+# remove x xs: remove x from xs (filter a specific element)
 REMOVE(x_ NIL) = NIL;
 REMOVE(x_ CONS(x_ z_)) = REMOVE(x_ z_);
 REMOVE(x_ CONS(y_ z_)) = CONS(y_ REMOVE(x_ z_));
