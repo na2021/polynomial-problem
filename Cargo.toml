@@ -1,12 +1,12 @@
 [package]
-name = "list-routine-learning-rs"
+name = "polynomial-problem"
 version = "0.1.0"
-authors = ["Josh Rule <joshua.s.rule@gmail.com>"]
+authors = ["Josh Rule <joshua.s.rule@gmail.com>", "Nicholas Alvarado <na2021@mit.edu>"]
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/joshrule/list-routine-learning-rs"
-homepage = "https://github.com/joshrule/list-routine-learning-rs"
-description = "Rust simulations using input/output examples to learn typed first-order term rewriting systems that perform list routines."
+repository = "https://github.com/na2021/polynomial-problem"
+homepage = "https://github.com/na2021/polynomial-problem"
+description = "Rust simulations using input/output examples to learn typed first-order term rewriting systems that generalize the binomial expansion problem."
 keywords = ["term-rewriting", "hindley-milner", "learning", "program-induction", "lists"]
 categories = ["science", "simulation"]
 

@@ -3,7 +3,7 @@
 [![Travis-CI.org](https://img.shields.io/travis/joshrule/list-routine-learning-rs.svg?maxAge=3600)](https://travis-ci.org/joshrule/list-routine-learning-rs)
 [![Codecov](https://img.shields.io/codecov/c/github/joshrule/list-routine-learning-rs.svg?maxAge=3600)](https://codecov.io/gh/joshrule/list-routine-learning-rs)
 
-[Rust][1] simulations using input/output examples to learn [typed][2] first-order [term rewriting systems][3] that perform list routines.
+[Rust][1] simulations using input/output examples to learn [typed][2] first-order [term rewriting systems][3] that generalize the binomial expansion problem.
 
 [0]: https://github.com/joshrule/term-rewriting-rs
      "list-routine-learning-rs"
