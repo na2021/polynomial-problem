@@ -1,0 +1,1 @@
+SQUARE(ADD(x_ y_)) = ADD(SQUARE(x_) ADD(MULTI(2 MULTI(x_ y_)) SQUARE(y_)));
